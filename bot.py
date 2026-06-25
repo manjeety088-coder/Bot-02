@@ -1,4 +1,3 @@
-
 import nest_asyncio
 nest_asyncio.apply()
 
@@ -9,8 +8,9 @@ import asyncio
 import re
 import os
 import time
-from keep_alive 
-import keep_alive
+
+# ✅ Fix: Import ek hi line me kar diya hai
+from keep_alive import keep_alive
 keep_alive()
 
 # Credentials
@@ -24,6 +24,10 @@ SESSION_STRING = "BQHOzi4AqKiHUnR46JCveds8fJSvksE_Nc9oThO5_6MrO4vroKMkUDup1rcpaP
 user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
 bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
+# 🛑 Global Variables for Task Cancellation
+cancel_flag = False
+is_running = False
+
 async def progress_bar(current, total, msg_id, action, start_time):
     elapsed_time = time.time() - start_time
     percentage = (current / total) * 100 if total > 0 else 0
@@ -32,8 +36,226 @@ async def progress_bar(current, total, msg_id, action, start_time):
 
 @bot_app.on_message(filters.command("start") & filters.private)
 async def bot_menu(client, message):
-    await message.reply_text("👋 Hello SZX Boss! Main ready hoon. Naya task shuru karne ke liye /task bhejein.")
+    await message.reply_text("👋 Hello SZX Boss! Main ready hoon.\n\n👉 Naya task shuru karne ke liye: /task\n👉 Chalte task ko rokne ke liye: /cancel")
 
+# 🛑 NEW FIX: Cancel Command
+@bot_app.on_message(filters.command("cancel") & filters.private)
+async def cancel_task(client, message):
+    global cancel_flag, is_running
+    if is_running:
+        cancel_flag = True
+        await message.reply_text("🛑 **Cancel Request Received!**\nAbhi jo message process ho raha hai, uske baad task automatically ruk jayega.")
+    else:
+        await message.reply_text("⚠️ Abhi koi process chal hi nahi raha hai.")
+
+@bot_app.on_message(filters.command("task") & filters.private)
+async def create_task(client, message):
+    global is_running, cancel_flag
+    if is_running:
+        await message.reply_text("⚠️ Ek task pehle se chal raha hai. Naya lagane ke liye purana /cancel karein.")
+        return
+
+    mode_ask = await message.chat.ask("⚙️ **Kya karna hai?**\n1. Forward (Fast Direct Copy)\n2. Re-upload (Download & Upload)\n\nReply 1 or 2:")
+    mode = "FORWARD" if mode_ask.text == "1" else "REUPLOAD"
+    
+    sender_ask = await message.chat.ask("📤 **Message kis account se bhejna hai?**\n1. Bot Account se\n2. User Account se\n\nReply 1 or 2:")
+    sender_type = "BOT" if sender_ask.text == "1" else "USER"
+    
+    if mode == "FORWARD" and sender_type == "BOT":
+        await message.reply_text("⚠️ *Notice: Bot source me nahi hai, isliye FORWARD automatically 'User Account' se hoga.*")
+        sender_type = "USER"
+
+    start_link_ask = await message.chat.ask("📥 **Start Message ka LINK bhejein:**")
+    start_link = start_link_ask.text
+    
+    topic_id = 0
+    private_match = re.search(r't\.me/c/(\d+)/(?:(\d+)/)?(\d+)', start_link)
+    public_match = re.search(r't\.me/([a-zA-Z0-9_]+)/(?:(\d+)/)?(\d+)', start_link)
+    
+    if private_match:
+        source_chat = int("-100" + private_match.group(1))
+        topic_id = int(private_match.group(2)) if private_match.group(2) else 0
+        start_id = int(private_match.group(3))
+    elif public_match:
+        source_chat = public_match.group(1)
+        topic_id = int(public_match.group(2)) if public_match.group(2) else 0
+        start_id = int(public_match.group(3))
+    else:
+        await message.reply_text("❌ Link samajh nahi aaya! Task cancel.")
+        return
+
+    end_link_ask = await message.chat.ask("🔢 **End Message ka LINK bhejein:**\n*(Ya fir number me ID likh dein, Latest tak chahiye toh 0 likhein)*")
+    end_link = end_link_ask.text
+    
+    end_id = 0
+    if end_link != "0":
+        end_private = re.search(r't\.me/c/(\d+)/(?:(\d+)/)?(\d+)', end_link)
+        end_public = re.search(r't\.me/([a-zA-Z0-9_]+)/(?:(\d+)/)?(\d+)', end_link)
+        if end_private: end_id = int(end_private.group(3))
+        elif end_public: end_id = int(end_public.group(3))
+        else:
+            try: end_id = int(end_link)
+            except: pass
+
+    dest_ask_type = await message.chat.ask("📤 **Destination kahan set karna hai?**\n1. Kisi Group me\n2. Yahin (Isi Bot ki chat me)\n\nReply 1 or 2:")
+    if dest_ask_type.text == "1":
+        dest_ask = await message.chat.ask("📤 **Destination Group ID bhejein:**")
+        dest_chat = int(dest_ask.text)
+    else:
+        dest_chat = message.chat.id
+
+    replace_ask = await message.chat.ask("📝 **Kya koi specific word/text remove ya replace karna hai?**\n*(Haan toh wo text bhejein, nahi toh 0 likhein)*")
+    replace_word = replace_ask.text
+
+    new_word = "0"
+    if replace_word != "0":
+        new_ask = await message.chat.ask(f"🔄 **'{replace_word}' ki jagah kya likhna hai?**\n*(Sirf delete karna hai toh 0 likhein)*")
+        new_word = new_ask.text
+
+    m = await message.reply_text("🔄 **Rukiye!** System load ho raha hai...")
+    
+    try:
+        async for dialog in user_app.get_dialogs(limit=300): pass
+        
+        cancel_flag = False
+        is_running = True
+        
+        await m.edit_text(f"🚀 **Process Started!**\nMode: {mode}\nIDs: {start_id} to {'Last' if end_id == 0 else end_id}\n\n🛑 Task rokne ke liye kisi bhi waqt `/cancel` bhejein.\nConsole check karein live counts ke liye!")
+        asyncio.create_task(run_szx_process(message, mode, sender_type, source_chat, dest_chat, start_id, end_id, topic_id, replace_word, new_word))
+    except Exception as e:
+        is_running = False
+        await m.edit_text(f"❌ Error: {e}")
+
+async def run_szx_process(message, mode, sender_type, source_chat, dest_chat, start_id, end_id, topic_id, replace_word, new_word):
+    global cancel_flag, is_running
+    processed_count = 0
+    current_index = 0
+    
+    try:
+        if end_id == 0:
+            async for last_m in user_app.get_chat_history(source_chat, limit=1):
+                end_id = last_m.id
+
+        total_messages = (end_id - start_id) + 1
+        send_client = bot_app if sender_type == "BOT" else user_app
+        print(f"\n🚀 Next -> Next Process Shuru... (Total Targets: {total_messages})\n")
+        
+        for current_id in range(start_id, end_id + 1):
+            # 🛑 Check Cancel Flag
+            if cancel_flag:
+                print("\n🛑 Task Cancelled by User!")
+                await message.reply_text(f"🛑 **Task Cancel Kar Diya Gaya Hai!**\nTotal Processed: {processed_count} messages.")
+                break
+                
+            current_index += 1
+            left_messages = total_messages - current_index
+            
+            try:
+                print(f"🔍 Reading Msg ID: {current_id} [{current_index}/{total_messages}]...", end="\r")
+                msg = await user_app.get_messages(source_chat, current_id)
+                
+                if msg is None or msg.empty or msg.service:
+                    print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} khali ya deleted hai. Baki: {left_messages} | Next ->")
+                    continue
+                    
+                msg_topic_id = msg.reply_to_top_message_id or msg.reply_to_message_id
+                if topic_id != 0 and msg_topic_id != topic_id:
+                    print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} is topic ka nahi hai. Next ->")
+                    continue
+                
+                original_text = msg.text.html if msg.text else (msg.caption.html if msg.caption else "")
+                new_text = original_text
+                
+                if original_text:
+                    new_text = original_text.replace("Anish", "SZX").replace("𝗔𝗯𝗵𝗶𝘀𝗵𝗲𝗸 𝗦𝗮𝗻𝗷𝗶𝘁 🚩🇮🇳", "SZX").replace("Abhishek Sanjit", "SZX")
+                    
+                    if replace_word != "0":
+                        replacement = "" if new_word == "0" else new_word
+                        new_text = new_text.replace(replace_word, replacement)
+
+                    new_text = re.sub(r'<a href="[^"]+">([^<]+)</a>', r'\1', new_text)
+                    new_text = re.sub(r'\s*\(?https?://(?:chat\.)?whatsapp\.com/[^\s<]+\)?\s*', ' ', new_text)
+                    new_text = re.sub(r'https?://\S+|www\.\S+', '', new_text).strip()
+                
+                branding_text = "\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
+                final_caption = f"{new_text}{branding_text}" if new_text else branding_text
+
+                if mode == "FORWARD":
+                    if new_text:
+                        if msg.media:
+                            await msg.copy(dest_chat, caption=final_caption)
+                        else:
+                            await user_app.send_message(dest_chat, new_text)
+                    else:
+                        await msg.copy(dest_chat)
+                    
+                    await asyncio.sleep(2)
+                    print(f"[{current_index}/{total_messages}] ✅ Msg {current_id} Forwarded! Baki: {left_messages} | Next ->")
+                    processed_count += 1
+                    
+                elif mode == "REUPLOAD" and msg.media:
+                    thumb_path = None
+                    media_obj = msg.video or msg.document or msg.audio
+                    if media_obj and getattr(media_obj, "thumbs", None):
+                        try: thumb_path = await user_app.download_media(media_obj.thumbs[0].file_id)
+                        except: pass
+
+                    start_time = time.time()
+                    file_path = await user_app.download_media(msg, progress=progress_bar, progress_args=(msg.id, "DL", start_time))
+                    
+                    print(f"\n📤 Uploading Msg {current_id}...", end="\r")
+                    if msg.video:
+                        await send_client.send_video(dest_chat, file_path, caption=final_caption, thumb=thumb_path)
+                    elif msg.document:
+                        await send_client.send_document(dest_chat, file_path, caption=final_caption, thumb=thumb_path)
+                    elif msg.audio:
+                        await send_client.send_audio(dest_chat, file_path, caption=final_caption)
+                    elif msg.photo:
+                        await send_client.send_photo(dest_chat, file_path, caption=final_caption)
+                        
+                    if file_path and os.path.exists(file_path): os.remove(file_path)
+                    if thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
+                        
+                    await asyncio.sleep(2)
+                    print(f"[{current_index}/{total_messages}] ✅ Msg {current_id} Uploaded! Baki: {left_messages} | Next ->")
+                    processed_count += 1
+
+            except FloodWait as e:
+                print(f"\n⚠️ Telegram speed limit! Wait kar raha hoon {e.value}s...")
+                await asyncio.sleep(e.value + 5)
+            except Exception as e:
+                print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} par error aaya ({e}). Next ->")
+
+        # Result Summary if not cancelled
+        if bot_app.is_connected and not cancel_flag:
+            if processed_count == 0:
+                await message.reply_text("⚠️ **Task Khatam! Par ek bhi message gaya nahi.**\n*Iska matlab wahan koi valid messages the hi nahi.*")
+            else:
+                await message.reply_text(f"🎉 **Task Complete!** Total {processed_count} messages bhej diye gaye.")
+            
+    except Exception as e:
+        print(f"❌ Process error: {e}")
+        if bot_app.is_connected and not cancel_flag:
+            await message.reply_text("❌ Process me koi error aayi. Logs check karein.")
+    finally:
+        is_running = False
+        cancel_flag = False
+
+async def main():
+    await user_app.start()
+    await bot_app.start()
+    print("\n🤖 SZX Master Bot Online! Go to Telegram and send /task")
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except KeyboardInterrupt: pass
+    finally:
+        await user_app.stop()
+        await bot_app.stop()
+
+# Execution
+try: asyncio.get_event_loop().run_until_complete(main())
+except Exception as e: print(f"Loop error: {e}")
 @bot_app.on_message(filters.command("task") & filters.private)
 async def create_task(client, message):
     mode_ask = await message.chat.ask("⚙️ **Kya karna hai?**\n1. Forward (Fast Direct Copy)\n2. Re-upload (Download & Upload)\n\nReply 1 or 2:")
