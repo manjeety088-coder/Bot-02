@@ -1,7 +1,14 @@
+# 🛑 YEH 6 LINES SABSE UPAR HONI CHAHIYE (LATEST PYTHON FIX)
+import asyncio
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 from pyrogram import Client, filters, idle
 import pyromod 
 from pyrogram.errors import FloodWait
-import asyncio
 import re
 import os
 import time
@@ -244,7 +251,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-        
+            
