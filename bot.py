@@ -9,6 +9,9 @@ import asyncio
 import re
 import os
 import time
+from keep_alive 
+import keep_alive
+keep_alive()
 
 # Credentials
 API_ID = 30330414
