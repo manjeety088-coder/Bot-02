@@ -24,7 +24,8 @@ BOT_TOKEN = "8700962493:AAFAamtjbUaNm-ibady6_7eyZFEYcHraXmA"
 # 👇 STRING SESSION
 SESSION_STRING = "BQHOzi4AqKiHUnR46JCveds8fJSvksE_Nc9oThO5_6MrO4vroKMkUDup1rcpaPf_Cmn9frid7Rz-W_shN2qM_gIdVhkOzfnR0jU3E6o9B0dciIj5uub7Iaq4tmjMe_iH006LeOxYzmeqVCxahlLNL4j01aDQsjX9a_NcxAOUxS_PCbqJTFa2MfWX_v9gD9Yy3b724qK4SuCwOdL8l0eMyu4CvxTq4YgKGvJxxY7drawZidkmqoK7bSrXRH78Jr-BIWD7Ft3ri29A5VubRNOWblgPFAvuAlyk6P16cq05YYUBFDTwxlBU-MhQtRW9zpC4dQ2K8da96HFXvsm8SmYDkV9SxOCa1gAAAAFmB8ZWAA"
 
-user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
+# 🛑 FIX: User account me 'no_updates=True' laga diya taaki background peer errors na aayein
+user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True, no_updates=True)
 bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
 # Global Variables for Task Cancellation
@@ -254,4 +255,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-            
+    
