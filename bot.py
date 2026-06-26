@@ -18,7 +18,7 @@ import threading
 from flask import Flask
 
 # ==========================================
-# 🌐 IN-BUILT KEEP ALIVE (NO EXTRA FILE NEEDED)
+# 🌐 IN-BUILT KEEP ALIVE SERVER
 # ==========================================
 app = Flask(__name__)
 @app.route('/')
@@ -102,12 +102,13 @@ async def edit_msg_safe(message, text):
     except Exception:
         pass
 
+# 🚀 BOOSTED YT-DLP DOWNLOADING SYSTEM
 def yt_dlp_hook(d, message, loop_obj):
     if d['status'] == 'downloading':
         p = d.get('_percent_str', '0%')
         s = d.get('_speed_str', '0B/s')
         eta = d.get('_eta_str', '0s')
-        text = f"📥 **Downloading Video (Fast)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
+        text = f"📥 **Downloading Video (SZX MAX Speed)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
         
         now = time.time()
         if not hasattr(message, 'last_update_time'): message.last_update_time = 0
@@ -121,25 +122,15 @@ def download_video_ytdlp(url, output_path, message, loop_obj):
         'outtmpl': output_path,
         'quiet': True,
         'nocheckcertificate': True,
-        'concurrent_fragment_downloads': 5,
+        'concurrent_fragment_downloads': 15, # 🔥 Full Nitro Speed (15 Threads)
+        'http_chunk_size': 10485760,        # 🔥 10MB Chunks per thread
+        'retries': 10,
         'progress_hooks': [lambda d: yt_dlp_hook(d, message, loop_obj)]
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-# ==========================================
-# 🧠 ULTIMATE DEEP SCAN CACHE RESOLVER
-# ==========================================
-async def force_cache_peer(client, chat_id):
-    # Yeh function group ko tab tak dhoondhega jab tak mil na jaye
-    try:
-        await client.get_chat(chat_id)
-    except Exception:
-        async for dialog in client.get_dialogs():
-            if dialog.chat.id == chat_id:
-                return True
-        return False
-
+# Helper for Destination Parsing
 def parse_chat_id(dest_input, current_chat_id):
     dest_input = dest_input.strip()
     if dest_input == "0":
@@ -191,20 +182,17 @@ async def handle_txt(client, message):
     if is_running:
         return await message.reply_text("⚠️ Ek task already chal raha hai.")
 
-    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:**\n*(Yahin bhejna hai toh 0 likhein)*")
+    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username:**\n*(Yahin bhejna hai toh 0 likhein)*")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
     
     file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
     if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
 
-    check_msg = await message.reply_text("🔄 **Checking Destination & Reading File...**")
+    m = await message.reply_text("🔄 File read kar raha hoon...")
     
     try:
         is_running = True
         cancel_flag = False
-        
-        if dest_chat != message.chat.id:
-            await force_cache_peer(bot_app, dest_chat)
             
         file_path = await client.download_media(file_ask.document)
         with open(file_path, 'r', encoding='utf-8') as f: lines = f.readlines()
@@ -213,7 +201,7 @@ async def handle_txt(client, message):
         total_lines = len(lines)
         processed = 0
         
-        await check_msg.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
+        await m.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
         
         for idx, line in enumerate(lines, 1):
             if cancel_flag:
@@ -263,7 +251,7 @@ async def handle_txt(client, message):
         cancel_flag = False
 
 # ==========================================
-# 🔄 TELEGRAM EXTRACTOR
+# 🔄 TELEGRAM EXTRACTOR (ERROR FREE)
 # ==========================================
 @bot_app.on_message(filters.command("task") & filters.private)
 async def create_task(client, message):
@@ -298,22 +286,23 @@ async def create_task(client, message):
     try: end_id = int(end_link_ask.text)
     except: end_id = int(re.search(r'(\d+)$', end_link_ask.text).group(1))
 
-    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:** (Yahin ke liye 0 likhein)")
+    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username:** (Yahin ke liye 0 likhein)")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
 
-    check_msg = await message.reply_text("🔄 **Deep Scanning Chats to find your group... (isme 5-10 second lagenge)**")
+    # 🟢 SIRF USER ACCOUNT SCAN KAREGA, BOT NAHI CHHUYEGA ISKO!
+    check_msg = await message.reply_text("🔄 **Scanning Account Memory (Deep Sync)... isme 10-15 second lag sakte hain...**")
+    try:
+        # Sirf user_app ke pass ye power hai, bot check karega toh error dega
+        async for _ in user_app.get_dialogs():
+            pass 
+    except Exception:
+        pass 
+    await check_msg.delete()
 
     try:
         is_running = True
         cancel_flag = False
         send_client = bot_app if sender_type == "BOT" else user_app
-
-        # 🚀 THE DEEP SCAN FIX: Group chahe kitna bhi purana ho, dhoondh lega!
-        await force_cache_peer(user_app, source_chat)
-        if dest_chat != message.chat.id:
-            await force_cache_peer(send_client, dest_chat)
-            
-        await check_msg.delete()
 
         if end_id == 0:
             async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
@@ -376,4 +365,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-                               
+                                                                       
