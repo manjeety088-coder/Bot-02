@@ -1,5 +1,7 @@
 pyrogram
 tgcrypto
 pyromod
-nest-asyncio
 flask
+yt-dlp
+aiohttp
+nest-asyncio
