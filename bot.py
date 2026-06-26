@@ -18,7 +18,7 @@ import threading
 from flask import Flask
 
 # ==========================================
-# 🌐 IN-BUILT KEEP ALIVE (NO EXTRA FILE NEEDED)
+# 🌐 IN-BUILT KEEP ALIVE 
 # ==========================================
 app = Flask(__name__)
 @app.route('/')
@@ -26,7 +26,6 @@ def health_check():
     return "SZX Master Bot is Running 24/7!"
 
 def run_web():
-    # Railway/Render ke liye port binding
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
@@ -47,7 +46,6 @@ bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKE
 
 cancel_flag = False
 is_running = False
-PROGRESS_FILE = "task_progress.txt"
 
 # ==========================================
 # 📊 LIVE PROGRESS BAR HELPERS
@@ -73,7 +71,6 @@ def TimeFormatter(milliseconds: int) -> str:
           ((str(seconds) + "s, ") if seconds else "")
     return tmp[:-2]
 
-# Pyrogram Upload/Download Progress
 async def progress_bar(current, total, ud_type, message, start):
     now = time.time()
     if not hasattr(message, 'last_update_time'): message.last_update_time = 0
@@ -105,7 +102,6 @@ async def edit_msg_safe(message, text):
     except Exception:
         pass
 
-# YT-DLP Download Progress
 def yt_dlp_hook(d, message, loop_obj):
     if d['status'] == 'downloading':
         p = d.get('_percent_str', '0%')
@@ -131,18 +127,7 @@ def download_video_ytdlp(url, output_path, message, loop_obj):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-# ==========================================
-# 🧠 SMART PEER CACHE RESOLVER
-# ==========================================
-async def resolve_peer_safe(client, chat_id):
-    try:
-        return await client.get_chat(chat_id)
-    except Exception as e:
-        if "PEER_ID" in str(e).upper() or "USERNAME" in str(e).upper() or "CHANNEL_PRIVATE" in str(e).upper():
-            async for _ in client.get_dialogs(): pass
-            return await client.get_chat(chat_id) 
-        raise e
-
+# Helper for Destination Chat ID
 def parse_chat_id(dest_input, current_chat_id):
     dest_input = dest_input.strip()
     if dest_input == "0":
@@ -200,14 +185,11 @@ async def handle_txt(client, message):
     file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
     if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
 
-    m = await message.reply_text("🔄 File read kar raha hoon aur permissions check kar raha hoon...")
+    m = await message.reply_text("🔄 File read kar raha hoon...")
     
     try:
         is_running = True
         cancel_flag = False
-        
-        if dest_chat != message.chat.id:
-            await resolve_peer_safe(bot_app, dest_chat)
             
         file_path = await client.download_media(file_ask.document)
         with open(file_path, 'r', encoding='utf-8') as f: lines = f.readlines()
@@ -304,29 +286,23 @@ async def create_task(client, message):
     dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:** (Yahin ke liye 0 likhein)")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
 
-    check_msg = await message.reply_text("🔄 **Checking Permissions & Resolving Cache...**")
-
     try:
         is_running = True
         cancel_flag = False
         send_client = bot_app if sender_type == "BOT" else user_app
 
-        try:
-            await resolve_peer_safe(user_app, source_chat)
-        except Exception as e:
-            return await check_msg.edit_text(f"❌ **Source Error:** Aap is group me add nahi ho ya link galat hai!\nError: `{e}`")
-
-        if dest_chat != message.chat.id:
-            try:
-                await resolve_peer_safe(send_client, dest_chat)
-            except Exception as e:
-                return await check_msg.edit_text(f"❌ **Dest Error:** Sender us group me add/admin nahi hai!\nError: `{e}`")
-                
-        await check_msg.delete()
-
-        if end_id == 0:
-            async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+        # 🚀 VIP CHECK HATA DIYA - SEEDHA DOWNLOAD SHURU KAREGA!
         
+        # Agar error aaye (Dialog load karne ke liye chhota sa hack)
+        try:
+            if end_id == 0:
+                async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+        except:
+            # Agar peer nahi mila toh ek baar dialogs fetch kar lega (background me)
+            async for _ in user_app.get_dialogs(limit=10): pass
+            if end_id == 0:
+                async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+
         await message.reply_text(f"🚀 **Task Started!** ID: {start_id} to {end_id}")
         
         for current_id in range(start_id, end_id + 1):
@@ -385,4 +361,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-            
+                    
