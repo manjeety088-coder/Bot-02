@@ -126,7 +126,7 @@ async def edit_msg_safe(message, text):
         pass
 
 # ==========================================
-# 🚀 ULTRA-FAST DOWNLOADER (THE BEAST MODE)
+# 🚀 ULTRA-FAST DOWNLOADER (FIXED)
 # ==========================================
 def yt_dlp_hook(d, message, loop_obj):
     if d['status'] == 'downloading':
@@ -147,9 +147,7 @@ def download_video_ytdlp(url, output_path, message, loop_obj, quality_fmt):
         'outtmpl': output_path,
         'quiet': True,
         'nocheckcertificate': True,
-        'hls_prefer_native': True,             # 🔥 ASLI JADOO: Forces parallel chunk downloading for m3u8
-        'concurrent_fragment_downloads': 30,   # 🔥 30 connections ek saath!
-        'http_chunk_size': 20971520,           # 🔥 20MB chunks
+        'concurrent_fragment_downloads': 40,   # 🔥 40 Pure Threads for m3u8 fragments
         'retries': 20,
         'fragment_retries': 20,
         'progress_hooks': [lambda d: yt_dlp_hook(d, message, loop_obj)]
@@ -299,7 +297,7 @@ async def handle_txt(client, message):
         cancel_flag = False
 
 # ==========================================
-# 🔄 TELEGRAM EXTRACTOR
+# 🔄 TELEGRAM EXTRACTOR (ERROR FREE)
 # ==========================================
 @bot_app.on_message(filters.command("task") & filters.private)
 async def create_task(client, message):
