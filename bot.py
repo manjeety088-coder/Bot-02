@@ -18,7 +18,7 @@ import threading
 from flask import Flask
 
 # ==========================================
-# 🌐 IN-BUILT KEEP ALIVE 
+# 🌐 IN-BUILT KEEP ALIVE (NO EXTRA FILE NEEDED)
 # ==========================================
 app = Flask(__name__)
 @app.route('/')
@@ -127,7 +127,19 @@ def download_video_ytdlp(url, output_path, message, loop_obj):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-# Helper for Destination Chat ID
+# ==========================================
+# 🧠 ULTIMATE DEEP SCAN CACHE RESOLVER
+# ==========================================
+async def force_cache_peer(client, chat_id):
+    # Yeh function group ko tab tak dhoondhega jab tak mil na jaye
+    try:
+        await client.get_chat(chat_id)
+    except Exception:
+        async for dialog in client.get_dialogs():
+            if dialog.chat.id == chat_id:
+                return True
+        return False
+
 def parse_chat_id(dest_input, current_chat_id):
     dest_input = dest_input.strip()
     if dest_input == "0":
@@ -185,11 +197,14 @@ async def handle_txt(client, message):
     file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
     if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
 
-    m = await message.reply_text("🔄 File read kar raha hoon...")
+    check_msg = await message.reply_text("🔄 **Checking Destination & Reading File...**")
     
     try:
         is_running = True
         cancel_flag = False
+        
+        if dest_chat != message.chat.id:
+            await force_cache_peer(bot_app, dest_chat)
             
         file_path = await client.download_media(file_ask.document)
         with open(file_path, 'r', encoding='utf-8') as f: lines = f.readlines()
@@ -198,7 +213,7 @@ async def handle_txt(client, message):
         total_lines = len(lines)
         processed = 0
         
-        await m.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
+        await check_msg.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
         
         for idx, line in enumerate(lines, 1):
             if cancel_flag:
@@ -286,23 +301,23 @@ async def create_task(client, message):
     dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:** (Yahin ke liye 0 likhein)")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
 
+    check_msg = await message.reply_text("🔄 **Deep Scanning Chats to find your group... (isme 5-10 second lagenge)**")
+
     try:
         is_running = True
         cancel_flag = False
         send_client = bot_app if sender_type == "BOT" else user_app
 
-        # 🚀 VIP CHECK HATA DIYA - SEEDHA DOWNLOAD SHURU KAREGA!
-        
-        # Agar error aaye (Dialog load karne ke liye chhota sa hack)
-        try:
-            if end_id == 0:
-                async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
-        except:
-            # Agar peer nahi mila toh ek baar dialogs fetch kar lega (background me)
-            async for _ in user_app.get_dialogs(limit=10): pass
-            if end_id == 0:
-                async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+        # 🚀 THE DEEP SCAN FIX: Group chahe kitna bhi purana ho, dhoondh lega!
+        await force_cache_peer(user_app, source_chat)
+        if dest_chat != message.chat.id:
+            await force_cache_peer(send_client, dest_chat)
+            
+        await check_msg.delete()
 
+        if end_id == 0:
+            async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+        
         await message.reply_text(f"🚀 **Task Started!** ID: {start_id} to {end_id}")
         
         for current_id in range(start_id, end_id + 1):
@@ -361,4 +376,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-                    
+                               
