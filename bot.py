@@ -35,13 +35,12 @@ threading.Thread(target=run_web, daemon=True).start()
 # ==========================================
 # 🛡️ CREDENTIALS & SECURITY
 # ==========================================
-ADMIN_ID = 6006752854  # ⚠️ YAHAN APNI TELEGRAM ID DALEIN!
+ADMIN_ID = 6006752854  
 
 API_ID = 30330414
 API_HASH = "98bce6547ca105994c198faf3edc3a0e"
 BOT_TOKEN = "8649660643:AAHVme45UDmh0_wu-F3FlMWBh_MGQaZLbzw"
 SESSION_STRING = "BQHOzi4AqKiHUnR46JCveds8fJSvksE_Nc9oThO5_6MrO4vroKMkUDup1rcpaPf_Cmn9frid7Rz-W_shN2qM_gIdVhkOzfnR0jU3E6o9B0dciIj5uub7Iaq4tmjMe_iH006LeOxYzmeqVCxahlLNL4j01aDQsjX9a_NcxAOUxS_PCbqJTFa2MfWX_v9gD9Yy3b724qK4SuCwOdL8l0eMyu4CvxTq4YgKGvJxxY7drawZidkmqoK7bSrXRH78Jr-BIWD7Ft3ri29A5VubRNOWblgPFAvuAlyk6P16cq05YYUBFDTwxlBU-MhQtRW9zpC4dQ2K8da96HFXvsm8SmYDkV9SxOCa1gAAAAFmB8ZWAA"
-# ⚠️ APNA STRING SESSION YAHAN DALEIN
 
 user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True, no_updates=True)
 bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
@@ -77,12 +76,13 @@ def TimeFormatter(milliseconds: int) -> str:
 # Pyrogram Upload/Download Progress
 async def progress_bar(current, total, ud_type, message, start):
     now = time.time()
-    diff = now - start
-    if total == 0: return
-    if round(diff % 3.00) == 0 or current == total:
-        percentage = current * 100 / total
-        speed = current / diff
-        time_to_completion = round((total - current) / speed) * 1000
+    if not hasattr(message, 'last_update_time'): message.last_update_time = 0
+    
+    if now - message.last_update_time > 3 or current == total:
+        message.last_update_time = now
+        percentage = current * 100 / total if total > 0 else 0
+        speed = current / (now - start) if (now - start) > 0 else 0
+        time_to_completion = round((total - current) / speed) * 1000 if speed > 0 else 0
         estimated_total_time = TimeFormatter(time_to_completion)
         
         progress_str = "[{0}{1}]".format(
@@ -97,6 +97,14 @@ async def progress_bar(current, total, ud_type, message, start):
         except Exception:
             pass
 
+async def edit_msg_safe(message, text):
+    try:
+        await message.edit_text(text)
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+    except Exception:
+        pass
+
 # YT-DLP Download Progress
 def yt_dlp_hook(d, message, loop_obj):
     if d['status'] == 'downloading':
@@ -106,10 +114,10 @@ def yt_dlp_hook(d, message, loop_obj):
         text = f"📥 **Downloading Video (Fast)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
         
         now = time.time()
-        if not hasattr(message, 'last_update'): message.last_update = 0
-        if now - message.last_update > 3: # Edit every 3 seconds to prevent floodwait
-            message.last_update = now
-            asyncio.run_coroutine_threadsafe(message.edit_text(text), loop_obj)
+        if not hasattr(message, 'last_update_time'): message.last_update_time = 0
+        if now - message.last_update_time > 3: 
+            message.last_update_time = now
+            asyncio.run_coroutine_threadsafe(edit_msg_safe(message, text), loop_obj)
 
 def download_video_ytdlp(url, output_path, message, loop_obj):
     ydl_opts = {
@@ -122,6 +130,35 @@ def download_video_ytdlp(url, output_path, message, loop_obj):
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
+
+# ==========================================
+# 🧠 SMART PEER CACHE RESOLVER
+# ==========================================
+async def resolve_peer_safe(client, chat_id):
+    try:
+        return await client.get_chat(chat_id)
+    except Exception as e:
+        if "PEER_ID" in str(e).upper() or "USERNAME" in str(e).upper() or "CHANNEL_PRIVATE" in str(e).upper():
+            async for _ in client.get_dialogs(): pass
+            return await client.get_chat(chat_id) 
+        raise e
+
+def parse_chat_id(dest_input, current_chat_id):
+    dest_input = dest_input.strip()
+    if dest_input == "0":
+        return current_chat_id
+    elif dest_input.startswith("-100") or dest_input.lstrip('-').isdigit():
+        return int(dest_input)
+    elif dest_input.startswith("@"):
+        return dest_input
+    elif "t.me/" in dest_input:
+        if "/c/" in dest_input:
+            match = re.search(r't\.me/c/(\d+)', dest_input)
+            return int("-100" + match.group(1)) if match else dest_input
+        else:
+            username = dest_input.split("/")[-1]
+            return "@" + username if not username.startswith("@") else username
+    return dest_input
 
 # ==========================================
 # 🛑 COMMANDS
@@ -157,18 +194,21 @@ async def handle_txt(client, message):
     if is_running:
         return await message.reply_text("⚠️ Ek task already chal raha hai.")
 
-    dest_ask = await message.chat.ask("📤 **Destination Group ID bhejein:**\n*(Yahin bhejna hai toh 0 likhein)*")
-    dest_chat = message.chat.id if dest_ask.text == "0" else int(dest_ask.text)
+    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:**\n*(Yahin bhejna hai toh 0 likhein)*")
+    dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
     
     file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
     if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
 
-    m = await message.reply_text("🔄 File read kar raha hoon...")
+    m = await message.reply_text("🔄 File read kar raha hoon aur permissions check kar raha hoon...")
     
     try:
         is_running = True
         cancel_flag = False
         
+        if dest_chat != message.chat.id:
+            await resolve_peer_safe(bot_app, dest_chat)
+            
         file_path = await client.download_media(file_ask.document)
         with open(file_path, 'r', encoding='utf-8') as f: lines = f.readlines()
         os.remove(file_path)
@@ -184,12 +224,15 @@ async def handle_txt(client, message):
                 break
                 
             line = line.strip()
-            if " : " not in line: continue
+            idx_http = line.rfind("http")
+            if idx_http == -1: continue
+            
+            name_part = line[:idx_http].strip()
+            if name_part.endswith(":"): name_part = name_part[:-1].strip()
+            url = line[idx_http:].strip()
             
             try:
-                name_part, url = line.rsplit(" : ", 1)
-                final_caption = f"**{name_part.strip()}**\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
-                
+                final_caption = f"**{name_part}**\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
                 file_ext = ".mp4" if "m3u8" in url else ".pdf"
                 temp_file = f"temp_{idx}{file_ext}"
 
@@ -258,17 +301,33 @@ async def create_task(client, message):
     try: end_id = int(end_link_ask.text)
     except: end_id = int(re.search(r'(\d+)$', end_link_ask.text).group(1))
 
-    dest_ask = await message.chat.ask("📤 **Destination Group ID:** (Yahin ke liye 0 likhein)")
-    dest_chat = message.chat.id if dest_ask.text == "0" else int(dest_ask.text)
+    dest_ask = await message.chat.ask("📤 **Destination Group ID / Username / Link:** (Yahin ke liye 0 likhein)")
+    dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
+
+    check_msg = await message.reply_text("🔄 **Checking Permissions & Resolving Cache...**")
 
     try:
         is_running = True
         cancel_flag = False
+        send_client = bot_app if sender_type == "BOT" else user_app
+
+        try:
+            await resolve_peer_safe(user_app, source_chat)
+        except Exception as e:
+            return await check_msg.edit_text(f"❌ **Source Error:** Aap is group me add nahi ho ya link galat hai!\nError: `{e}`")
+
+        if dest_chat != message.chat.id:
+            try:
+                await resolve_peer_safe(send_client, dest_chat)
+            except Exception as e:
+                return await check_msg.edit_text(f"❌ **Dest Error:** Sender us group me add/admin nahi hai!\nError: `{e}`")
+                
+        await check_msg.delete()
+
         if end_id == 0:
             async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
         
         await message.reply_text(f"🚀 **Task Started!** ID: {start_id} to {end_id}")
-        send_client = bot_app if sender_type == "BOT" else user_app
         
         for current_id in range(start_id, end_id + 1):
             if cancel_flag:
@@ -303,7 +362,8 @@ async def create_task(client, message):
                 await message.reply_text(f"⏳ **FloodWait:** Waiting {e.value} seconds...")
                 await asyncio.sleep(e.value + 2)
             except Exception as e:
-                await message.reply_text(f"⚠️ **Skip ID {current_id}:** `{e}`")
+                if "Message handler check failed" not in str(e):
+                    await message.reply_text(f"⚠️ **Skip ID {current_id}:** `{e}`")
                 
     except Exception as e:
         await message.reply_text(f"❌ **Task Failed:** `{e}`")
@@ -325,4 +385,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-        
+            
