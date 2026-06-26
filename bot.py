@@ -15,6 +15,7 @@ import time
 import math
 import re
 import threading
+import subprocess
 from flask import Flask
 
 # ==========================================
@@ -48,7 +49,7 @@ cancel_flag = False
 is_running = False
 
 # ==========================================
-# 📊 LIVE PROGRESS BAR HELPERS
+# 📊 HELPERS & UTILITIES
 # ==========================================
 def humanbytes(size):
     if not size: return ""
@@ -70,6 +71,19 @@ def TimeFormatter(milliseconds: int) -> str:
           ((str(minutes) + "m, ") if minutes else "") + \
           ((str(seconds) + "s, ") if seconds else "")
     return tmp[:-2]
+
+def clean_filename(name):
+    # Removes invalid characters for file saving
+    return re.sub(r'[\\/*?:"<>|]', "", name)
+
+def generate_thumbnail(video_path, output_path):
+    # Extracts a frame at 2 seconds using ffmpeg
+    try:
+        subprocess.run(['ffmpeg', '-i', video_path, '-ss', '00:00:02.000', '-vframes', '1', output_path, '-y'], 
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(output_path): return output_path
+    except: pass
+    return None
 
 async def progress_bar(current, total, ud_type, message, start):
     now = time.time()
@@ -102,13 +116,12 @@ async def edit_msg_safe(message, text):
     except Exception:
         pass
 
-# 🚀 BOOSTED YT-DLP DOWNLOADING SYSTEM
 def yt_dlp_hook(d, message, loop_obj):
     if d['status'] == 'downloading':
         p = d.get('_percent_str', '0%')
         s = d.get('_speed_str', '0B/s')
         eta = d.get('_eta_str', '0s')
-        text = f"📥 **Downloading Video (SZX MAX Speed)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
+        text = f"📥 **Downloading Video (SZX Quality Mode)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
         
         now = time.time()
         if not hasattr(message, 'last_update_time'): message.last_update_time = 0
@@ -116,21 +129,20 @@ def yt_dlp_hook(d, message, loop_obj):
             message.last_update_time = now
             asyncio.run_coroutine_threadsafe(edit_msg_safe(message, text), loop_obj)
 
-def download_video_ytdlp(url, output_path, message, loop_obj):
+def download_video_ytdlp(url, output_path, message, loop_obj, quality_fmt):
     ydl_opts = {
-        'format': 'best',
+        'format': quality_fmt,
         'outtmpl': output_path,
         'quiet': True,
         'nocheckcertificate': True,
-        'concurrent_fragment_downloads': 15, # 🔥 Full Nitro Speed (15 Threads)
-        'http_chunk_size': 10485760,        # 🔥 10MB Chunks per thread
+        'concurrent_fragment_downloads': 15, 
+        'http_chunk_size': 10485760,        
         'retries': 10,
         'progress_hooks': [lambda d: yt_dlp_hook(d, message, loop_obj)]
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-# Helper for Destination Parsing
 def parse_chat_id(dest_input, current_chat_id):
     dest_input = dest_input.strip()
     if dest_input == "0":
@@ -173,7 +185,7 @@ async def log_cmd(client, message):
     await message.reply_text(f"📝 **System Status:**\n{status}\nCancel Flag: {cancel_flag}")
 
 # ==========================================
-# 📄 TXT BATCH EXTRACTOR
+# 📄 TXT BATCH EXTRACTOR (Upgraded)
 # ==========================================
 @bot_app.on_message(filters.command("txt") & filters.private)
 async def handle_txt(client, message):
@@ -185,6 +197,11 @@ async def handle_txt(client, message):
     dest_ask = await message.chat.ask("📤 **Destination Group ID / Username:**\n*(Yahin bhejna hai toh 0 likhein)*")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
     
+    # 📺 Naya Quality Option
+    quality_ask = await message.chat.ask("📺 **Video Quality select karein:**\n(Example: 720, 480, 360. Agar Best/Original chahiye toh `0` likhein)")
+    q_val = quality_ask.text.strip()
+    quality_fmt = 'best' if q_val == "0" else f'bestvideo[height<={q_val}]+bestaudio/best[height<={q_val}]/best'
+
     file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
     if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
 
@@ -201,7 +218,7 @@ async def handle_txt(client, message):
         total_lines = len(lines)
         processed = 0
         
-        await m.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
+        await m.edit_text(f"🚀 **SZX TXT Task Started!**\nTotal Files: {total_lines}\nQuality: {q_val + 'p' if q_val != '0' else 'Best'}")
         
         for idx, line in enumerate(lines, 1):
             if cancel_flag:
@@ -217,26 +234,36 @@ async def handle_txt(client, message):
             url = line[idx_http:].strip()
             
             try:
+                # 📝 Naya File Naming System
+                clean_name = clean_filename(name_part)
                 final_caption = f"**{name_part}**\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
-                file_ext = ".mp4" if "m3u8" in url else ".pdf"
-                temp_file = f"temp_{idx}{file_ext}"
+                
+                file_ext = ".mp4" if "m3u8" in url or "mp4" in url else ".pdf"
+                # Ab file ka naam asli topic ka hoga + @szxmocks
+                target_filename = f"{clean_name} @szxmocks{file_ext}"
 
                 status_msg = await message.reply_text(f"⚙️ **Processing:** {name_part}")
 
                 if file_ext == ".mp4":
-                    await asyncio.to_thread(download_video_ytdlp, url.strip(), temp_file, status_msg, loop)
+                    await asyncio.to_thread(download_video_ytdlp, url.strip(), target_filename, status_msg, loop, quality_fmt)
                     start_time = time.time()
-                    await bot_app.send_video(dest_chat, video=temp_file, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading Video...**", status_msg, start_time))
+                    
+                    # 🖼️ Auto Thumbnail Generator
+                    thumb_img = f"thumb_{idx}.jpg"
+                    generated_thumb = generate_thumbnail(target_filename, thumb_img)
+                    
+                    await bot_app.send_video(dest_chat, video=target_filename, caption=final_caption, thumb=generated_thumb, progress=progress_bar, progress_args=("📤 **Uploading Video...**", status_msg, start_time))
+                    if generated_thumb: os.remove(generated_thumb)
                 else:
                     await status_msg.edit_text("📥 **Downloading PDF...**")
                     async with aiohttp.ClientSession() as session:
                         async with session.get(url.strip()) as response:
-                            with open(temp_file, 'wb') as f: f.write(await response.read())
+                            with open(target_filename, 'wb') as f: f.write(await response.read())
                     start_time = time.time()
-                    await bot_app.send_document(dest_chat, document=temp_file, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading PDF...**", status_msg, start_time))
+                    await bot_app.send_document(dest_chat, document=target_filename, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading PDF...**", status_msg, start_time))
 
                 await status_msg.delete()
-                if os.path.exists(temp_file): os.remove(temp_file)
+                if os.path.exists(target_filename): os.remove(target_filename)
                 processed += 1
                 
             except Exception as e:
@@ -251,7 +278,7 @@ async def handle_txt(client, message):
         cancel_flag = False
 
 # ==========================================
-# 🔄 TELEGRAM EXTRACTOR (ERROR FREE)
+# 🔄 TELEGRAM EXTRACTOR (Upgraded)
 # ==========================================
 @bot_app.on_message(filters.command("task") & filters.private)
 async def create_task(client, message):
@@ -289,14 +316,17 @@ async def create_task(client, message):
     dest_ask = await message.chat.ask("📤 **Destination Group ID / Username:** (Yahin ke liye 0 likhein)")
     dest_chat = parse_chat_id(dest_ask.text, message.chat.id)
 
-    # 🟢 SIRF USER ACCOUNT SCAN KAREGA, BOT NAHI CHHUYEGA ISKO!
-    check_msg = await message.reply_text("🔄 **Scanning Account Memory (Deep Sync)... isme 10-15 second lag sakte hain...**")
+    # ✂️ Naya Word Replacement System
+    replace_ask = await message.chat.ask("✏️ **Kya koi word hatana/replace karna hai?**\n(Format: `PuranaWord|NayaWord` ya hatane ke liye sirf `Word|` likhein. Skip karna hai toh `0` likhein)")
+    replace_word = ""
+    new_word = ""
+    if replace_ask.text != "0" and "|" in replace_ask.text:
+        replace_word, new_word = replace_ask.text.split("|", 1)
+
+    check_msg = await message.reply_text("🔄 **Scanning Account Memory... isme 10-15 second lag sakte hain...**")
     try:
-        # Sirf user_app ke pass ye power hai, bot check karega toh error dega
-        async for _ in user_app.get_dialogs():
-            pass 
-    except Exception:
-        pass 
+        async for _ in user_app.get_dialogs(): pass 
+    except Exception: pass 
     await check_msg.delete()
 
     try:
@@ -307,7 +337,7 @@ async def create_task(client, message):
         if end_id == 0:
             async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
         
-        await message.reply_text(f"🚀 **Task Started!** ID: {start_id} to {end_id}")
+        await message.reply_text(f"🚀 **SZX Task Started!** ID: {start_id} to {end_id}")
         
         for current_id in range(start_id, end_id + 1):
             if cancel_flag:
@@ -320,22 +350,48 @@ async def create_task(client, message):
                 
                 original_text = msg.text.html if msg.text else (msg.caption.html if msg.caption else "")
                 new_text = re.sub(r'https?://\S+|www\.\S+', '', original_text).strip()
+                
+                # Apply Text Replacement on Caption
+                if replace_word:
+                    new_text = new_text.replace(replace_word, new_word)
+                    
                 final_caption = f"{new_text}\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
 
                 if mode == "FORWARD":
                     if msg.media: await msg.copy(dest_chat, caption=final_caption)
                     else: await user_app.send_message(dest_chat, final_caption)
+                    
                 elif mode == "REUPLOAD" and msg.media:
                     status_msg = await message.reply_text(f"⚙️ **Processing ID:** {current_id}")
                     start_time = time.time()
-                    file_path = await user_app.download_media(msg, progress=progress_bar, progress_args=("📥 **Downloading...**", status_msg, start_time))
+                    
+                    # File Rename & Replacement Logic
+                    media_obj = msg.video or msg.document or msg.audio
+                    orig_filename = getattr(media_obj, "file_name", f"SZX_File_{current_id}.mp4" if msg.video else f"SZX_Doc_{current_id}.pdf")
+                    if replace_word:
+                        orig_filename = orig_filename.replace(replace_word, new_word)
+                    
+                    download_path = f"downloads/{orig_filename}"
+                    
+                    # Download File
+                    file_path = await user_app.download_media(msg, file_name=download_path, progress=progress_bar, progress_args=("📥 **Downloading...**", status_msg, start_time))
+                    
+                    # 🖼️ Download Thumbnail if exists
+                    thumb_path = None
+                    if msg.video and msg.video.thumbs:
+                        thumb_path = await user_app.download_media(msg.video.thumbs[0].file_id)
                     
                     start_time = time.time()
-                    if msg.video: await send_client.send_video(dest_chat, file_path, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
-                    elif msg.document: await send_client.send_document(dest_chat, file_path, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
+                    if msg.video: 
+                        await send_client.send_video(dest_chat, file_path, caption=final_caption, thumb=thumb_path, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
+                    elif msg.document: 
+                        await send_client.send_document(dest_chat, file_path, caption=final_caption, thumb=thumb_path, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
+                    elif msg.audio:
+                        await send_client.send_audio(dest_chat, file_path, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
                     
                     await status_msg.delete()
                     if os.path.exists(file_path): os.remove(file_path)
+                    if thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
 
                 await asyncio.sleep(2)
             except FloodWait as e:
@@ -361,8 +417,9 @@ async def main():
     await bot_app.stop()
 
 if __name__ == "__main__":
+    if not os.path.exists("downloads"): os.makedirs("downloads")
     try:
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-                                                                       
+        
