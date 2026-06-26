@@ -35,12 +35,13 @@ threading.Thread(target=run_web, daemon=True).start()
 # ==========================================
 # 🛡️ CREDENTIALS & SECURITY
 # ==========================================
-ADMIN_ID = 123456789  # ⚠️ YAHAN APNI TELEGRAM ID DALEIN!
+ADMIN_ID = 6006752854  # ⚠️ YAHAN APNI TELEGRAM ID DALEIN!
 
 API_ID = 30330414
 API_HASH = "98bce6547ca105994c198faf3edc3a0e"
 BOT_TOKEN = "8649660643:AAHVme45UDmh0_wu-F3FlMWBh_MGQaZLbzw"
-SESSION_STRING = "YAHAN_APNA_STRING_SESSION_DALEIN" # ⚠️ APNA STRING SESSION YAHAN DALEIN
+SESSION_STRING = "BQHOzi4AqKiHUnR46JCveds8fJSvksE_Nc9oThO5_6MrO4vroKMkUDup1rcpaPf_Cmn9frid7Rz-W_shN2qM_gIdVhkOzfnR0jU3E6o9B0dciIj5uub7Iaq4tmjMe_iH006LeOxYzmeqVCxahlLNL4j01aDQsjX9a_NcxAOUxS_PCbqJTFa2MfWX_v9gD9Yy3b724qK4SuCwOdL8l0eMyu4CvxTq4YgKGvJxxY7drawZidkmqoK7bSrXRH78Jr-BIWD7Ft3ri29A5VubRNOWblgPFAvuAlyk6P16cq05YYUBFDTwxlBU-MhQtRW9zpC4dQ2K8da96HFXvsm8SmYDkV9SxOCa1gAAAAFmB8ZWAA"
+# ⚠️ APNA STRING SESSION YAHAN DALEIN
 
 user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True, no_updates=True)
 bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
