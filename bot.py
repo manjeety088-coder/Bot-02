@@ -1,4 +1,3 @@
-# 🛑 YEH 6 LINES SABSE UPAR HONI CHAHIYE (LATEST PYTHON FIX)
 import asyncio
 try:
     loop = asyncio.get_event_loop()
@@ -7,68 +6,238 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 from pyrogram import Client, filters, idle
-import pyromod 
 from pyrogram.errors import FloodWait
-import re
+import pyromod 
+import yt_dlp
+import aiohttp
 import os
 import time
+import math
+import re
+import threading
+from flask import Flask
 
-from keep_alive import keep_alive
-keep_alive()
+# ==========================================
+# 🌐 IN-BUILT KEEP ALIVE (NO EXTRA FILE NEEDED)
+# ==========================================
+app = Flask(__name__)
+@app.route('/')
+def health_check():
+    return "SZX Master Bot is Running 24/7!"
 
-# Credentials
+def run_web():
+    # Railway/Render ke liye port binding
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_web, daemon=True).start()
+
+# ==========================================
+# 🛡️ CREDENTIALS & SECURITY
+# ==========================================
+ADMIN_ID = 123456789  # ⚠️ YAHAN APNI TELEGRAM ID DALEIN!
+
 API_ID = 30330414
 API_HASH = "98bce6547ca105994c198faf3edc3a0e"
-BOT_TOKEN = "8700962493:AAFAamtjbUaNm-ibady6_7eyZFEYcHraXmA"
+BOT_TOKEN = "8649660643:AAHVme45UDmh0_wu-F3FlMWBh_MGQaZLbzw"
+SESSION_STRING = "YAHAN_APNA_STRING_SESSION_DALEIN" # ⚠️ APNA STRING SESSION YAHAN DALEIN
 
-# 👇 STRING SESSION
-SESSION_STRING = "BQHOzi4AqKiHUnR46JCveds8fJSvksE_Nc9oThO5_6MrO4vroKMkUDup1rcpaPf_Cmn9frid7Rz-W_shN2qM_gIdVhkOzfnR0jU3E6o9B0dciIj5uub7Iaq4tmjMe_iH006LeOxYzmeqVCxahlLNL4j01aDQsjX9a_NcxAOUxS_PCbqJTFa2MfWX_v9gD9Yy3b724qK4SuCwOdL8l0eMyu4CvxTq4YgKGvJxxY7drawZidkmqoK7bSrXRH78Jr-BIWD7Ft3ri29A5VubRNOWblgPFAvuAlyk6P16cq05YYUBFDTwxlBU-MhQtRW9zpC4dQ2K8da96HFXvsm8SmYDkV9SxOCa1gAAAAFmB8ZWAA"
-
-# 🛑 FIX: User account me 'no_updates=True' laga diya taaki background peer errors na aayein
 user_app = Client("szx_user", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True, no_updates=True)
 bot_app = Client("szx_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-# Global Variables for Task Cancellation
 cancel_flag = False
 is_running = False
+PROGRESS_FILE = "task_progress.txt"
 
-async def progress_bar(current, total, msg_id, action, start_time):
-    elapsed_time = time.time() - start_time
-    percentage = (current / total) * 100 if total > 0 else 0
-    speed = current / elapsed_time if elapsed_time > 0 else 0
-    print(f"⏳ [{action}] Msg {msg_id}: {percentage:.1f}% | Speed: {speed/(1024*1024):.2f} MB/s", end="\r")
+# ==========================================
+# 📊 LIVE PROGRESS BAR HELPERS
+# ==========================================
+def humanbytes(size):
+    if not size: return ""
+    power = 2**10
+    n = 0
+    Dic_powerN = {0: ' ', 1: 'K', 2: 'M', 3: 'G', 4: 'T'}
+    while size > power:
+        size /= power
+        n += 1
+    return str(round(size, 2)) + " " + Dic_powerN[n] + 'B'
 
+def TimeFormatter(milliseconds: int) -> str:
+    seconds, milliseconds = divmod(int(milliseconds), 1000)
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    tmp = ((str(days) + "d, ") if days else "") + \
+          ((str(hours) + "h, ") if hours else "") + \
+          ((str(minutes) + "m, ") if minutes else "") + \
+          ((str(seconds) + "s, ") if seconds else "")
+    return tmp[:-2]
+
+# Pyrogram Upload/Download Progress
+async def progress_bar(current, total, ud_type, message, start):
+    now = time.time()
+    diff = now - start
+    if total == 0: return
+    if round(diff % 3.00) == 0 or current == total:
+        percentage = current * 100 / total
+        speed = current / diff
+        time_to_completion = round((total - current) / speed) * 1000
+        estimated_total_time = TimeFormatter(time_to_completion)
+        
+        progress_str = "[{0}{1}]".format(
+            ''.join(["█" for i in range(math.floor(percentage / 10))]),
+            ''.join(["░" for i in range(10 - math.floor(percentage / 10))]))
+        
+        tmp = f"{ud_type}\n\n{progress_str}\n🚀 **Progress:** {round(percentage, 2)}%\n⚡ **Speed:** {humanbytes(speed)}/s\n⏱ **ETA:** {estimated_total_time}"
+        try:
+            await message.edit_text(tmp)
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception:
+            pass
+
+# YT-DLP Download Progress
+def yt_dlp_hook(d, message, loop_obj):
+    if d['status'] == 'downloading':
+        p = d.get('_percent_str', '0%')
+        s = d.get('_speed_str', '0B/s')
+        eta = d.get('_eta_str', '0s')
+        text = f"📥 **Downloading Video (Fast)...**\n\n🚀 **Progress:** {p}\n⚡ **Speed:** {s}\n⏱ **ETA:** {eta}"
+        
+        now = time.time()
+        if not hasattr(message, 'last_update'): message.last_update = 0
+        if now - message.last_update > 3: # Edit every 3 seconds to prevent floodwait
+            message.last_update = now
+            asyncio.run_coroutine_threadsafe(message.edit_text(text), loop_obj)
+
+def download_video_ytdlp(url, output_path, message, loop_obj):
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': output_path,
+        'quiet': True,
+        'nocheckcertificate': True,
+        'concurrent_fragment_downloads': 5,
+        'progress_hooks': [lambda d: yt_dlp_hook(d, message, loop_obj)]
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+# ==========================================
+# 🛑 COMMANDS
+# ==========================================
 @bot_app.on_message(filters.command("start") & filters.private)
-async def bot_menu(client, message):
-    await message.reply_text("👋 Hello SZX Boss! Main ready hoon.\n\n👉 Naya task shuru karne ke liye: /task\n👉 Chalte task ko rokne ke liye: /cancel")
+async def start_cmd(client, message):
+    if message.from_user.id != ADMIN_ID: return
+    await message.reply_text("👋 **Welcome SZX Boss!**\n\nCommands:\n`/task` - Extract from Telegram\n`/txt` - Extract from TXT File\n`/cancel` - Stop current process\n`/log` - Check bot status")
 
 @bot_app.on_message(filters.command("cancel") & filters.private)
-async def cancel_task(client, message):
+async def cancel_cmd(client, message):
+    if message.from_user.id != ADMIN_ID: return
     global cancel_flag, is_running
     if is_running:
         cancel_flag = True
-        await message.reply_text("🛑 **Cancel Request Received!**\nAbhi jo message process ho raha hai, uske baad task automatically ruk jayega.")
+        await message.reply_text("🛑 **Cancel Command Accepted!** Process will stop after the current file.")
     else:
-        await message.reply_text("⚠️ Abhi koi process chal hi nahi raha hai.")
+        await message.reply_text("⚠️ Koi process nahi chal raha.")
 
-@bot_app.on_message(filters.command("task") & filters.private)
-async def create_task(client, message):
+@bot_app.on_message(filters.command("log") & filters.private)
+async def log_cmd(client, message):
+    if message.from_user.id != ADMIN_ID: return
+    status = "🟢 Running Task" if is_running else "🔴 Idle"
+    await message.reply_text(f"📝 **System Status:**\n{status}\nCancel Flag: {cancel_flag}")
+
+# ==========================================
+# 📄 TXT BATCH EXTRACTOR
+# ==========================================
+@bot_app.on_message(filters.command("txt") & filters.private)
+async def handle_txt(client, message):
+    if message.from_user.id != ADMIN_ID: return
     global is_running, cancel_flag
     if is_running:
-        await message.reply_text("⚠️ Ek task pehle se chal raha hai. Naya lagane ke liye purana /cancel karein.")
-        return
+        return await message.reply_text("⚠️ Ek task already chal raha hai.")
 
-    mode_ask = await message.chat.ask("⚙️ **Kya karna hai?**\n1. Forward (Fast Direct Copy)\n2. Re-upload (Download & Upload)\n\nReply 1 or 2:")
+    dest_ask = await message.chat.ask("📤 **Destination Group ID bhejein:**\n*(Yahin bhejna hai toh 0 likhein)*")
+    dest_chat = message.chat.id if dest_ask.text == "0" else int(dest_ask.text)
+    
+    file_ask = await message.chat.ask("📄 **Apni .txt file bhejein:**")
+    if not file_ask.document: return await message.reply_text("❌ File nahi mili.")
+
+    m = await message.reply_text("🔄 File read kar raha hoon...")
+    
+    try:
+        is_running = True
+        cancel_flag = False
+        
+        file_path = await client.download_media(file_ask.document)
+        with open(file_path, 'r', encoding='utf-8') as f: lines = f.readlines()
+        os.remove(file_path)
+
+        total_lines = len(lines)
+        processed = 0
+        
+        await m.edit_text(f"🚀 **TXT Task Started!** Total Files: {total_lines}")
+        
+        for idx, line in enumerate(lines, 1):
+            if cancel_flag:
+                await message.reply_text("🛑 **Task Stopped by Admin!**")
+                break
+                
+            line = line.strip()
+            if " : " not in line: continue
+            
+            try:
+                name_part, url = line.rsplit(" : ", 1)
+                final_caption = f"**{name_part.strip()}**\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
+                
+                file_ext = ".mp4" if "m3u8" in url else ".pdf"
+                temp_file = f"temp_{idx}{file_ext}"
+
+                status_msg = await message.reply_text(f"⚙️ **Processing:** {name_part}")
+
+                if file_ext == ".mp4":
+                    await asyncio.to_thread(download_video_ytdlp, url.strip(), temp_file, status_msg, loop)
+                    start_time = time.time()
+                    await bot_app.send_video(dest_chat, video=temp_file, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading Video...**", status_msg, start_time))
+                else:
+                    await status_msg.edit_text("📥 **Downloading PDF...**")
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url.strip()) as response:
+                            with open(temp_file, 'wb') as f: f.write(await response.read())
+                    start_time = time.time()
+                    await bot_app.send_document(dest_chat, document=temp_file, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading PDF...**", status_msg, start_time))
+
+                await status_msg.delete()
+                if os.path.exists(temp_file): os.remove(temp_file)
+                processed += 1
+                
+            except Exception as e:
+                await message.reply_text(f"❌ **Error in {name_part}:** `{e}`")
+                
+        if not cancel_flag: await message.reply_text(f"🎉 **Batch Complete!** Uploaded: {processed}/{total_lines}")
+
+    except Exception as e:
+        await message.reply_text(f"❌ **Main Error:** `{e}`")
+    finally:
+        is_running = False
+        cancel_flag = False
+
+# ==========================================
+# 🔄 TELEGRAM EXTRACTOR
+# ==========================================
+@bot_app.on_message(filters.command("task") & filters.private)
+async def create_task(client, message):
+    if message.from_user.id != ADMIN_ID: return
+    global is_running, cancel_flag
+    if is_running:
+        return await message.reply_text("⚠️ Ek task already chal raha hai.")
+
+    mode_ask = await message.chat.ask("⚙️ **Kya karna hai?**\n1. Forward\n2. Re-upload")
     mode = "FORWARD" if mode_ask.text == "1" else "REUPLOAD"
     
-    sender_ask = await message.chat.ask("📤 **Message kis account se bhejna hai?**\n1. Bot Account se\n2. User Account se\n\nReply 1 or 2:")
+    sender_ask = await message.chat.ask("📤 **Kis se bhejna hai?**\n1. Bot\n2. User")
     sender_type = "BOT" if sender_ask.text == "1" else "USER"
     
-    if mode == "FORWARD" and sender_type == "BOT":
-        await message.reply_text("⚠️ *Notice: Bot source me nahi hai, isliye FORWARD automatically 'User Account' se hoga.*")
-        sender_type = "USER"
-
-    start_link_ask = await message.chat.ask("📥 **Start Message ka LINK bhejein:**")
+    start_link_ask = await message.chat.ask("📥 **Start Message LINK:**")
     start_link = start_link_ask.text
     
     topic_id = 0
@@ -77,167 +246,66 @@ async def create_task(client, message):
     
     if private_match:
         source_chat = int("-100" + private_match.group(1))
-        topic_id = int(private_match.group(2)) if private_match.group(2) else 0
         start_id = int(private_match.group(3))
     elif public_match:
         source_chat = public_match.group(1)
-        topic_id = int(public_match.group(2)) if public_match.group(2) else 0
         start_id = int(public_match.group(3))
     else:
-        await message.reply_text("❌ Link samajh nahi aaya! Task cancel.")
-        return
+        return await message.reply_text("❌ Link Invalid!")
 
-    end_link_ask = await message.chat.ask("🔢 **End Message ka LINK bhejein:**\n*(Ya fir number me ID likh dein, Latest tak chahiye toh 0 likhein)*")
-    end_link = end_link_ask.text
-    
-    end_id = 0
-    if end_link != "0":
-        end_private = re.search(r't\.me/c/(\d+)/(?:(\d+)/)?(\d+)', end_link)
-        end_public = re.search(r't\.me/([a-zA-Z0-9_]+)/(?:(\d+)/)?(\d+)', end_link)
-        if end_private: end_id = int(end_private.group(3))
-        elif end_public: end_id = int(end_public.group(3))
-        else:
-            try: end_id = int(end_link)
-            except: pass
+    end_link_ask = await message.chat.ask("🔢 **End Message ID/LINK:** (0 for latest)")
+    try: end_id = int(end_link_ask.text)
+    except: end_id = int(re.search(r'(\d+)$', end_link_ask.text).group(1))
 
-    dest_ask_type = await message.chat.ask("📤 **Destination kahan set karna hai?**\n1. Kisi Group me\n2. Yahin (Isi Bot ki chat me)\n\nReply 1 or 2:")
-    if dest_ask_type.text == "1":
-        dest_ask = await message.chat.ask("📤 **Destination Group ID bhejein:**")
-        dest_chat = int(dest_ask.text)
-    else:
-        dest_chat = message.chat.id
+    dest_ask = await message.chat.ask("📤 **Destination Group ID:** (Yahin ke liye 0 likhein)")
+    dest_chat = message.chat.id if dest_ask.text == "0" else int(dest_ask.text)
 
-    replace_ask = await message.chat.ask("📝 **Kya koi specific word/text remove ya replace karna hai?**\n*(Haan toh wo text bhejein, nahi toh 0 likhein)*")
-    replace_word = replace_ask.text
-
-    new_word = "0"
-    if replace_word != "0":
-        new_ask = await message.chat.ask(f"🔄 **'{replace_word}' ki jagah kya likhna hai?**\n*(Sirf delete karna hai toh 0 likhein)*")
-        new_word = new_ask.text
-
-    m = await message.reply_text("🔄 **Rukiye!** System load ho raha hai...")
-    
     try:
-        async for dialog in user_app.get_dialogs(limit=300): pass
-        
-        cancel_flag = False
         is_running = True
-        
-        await m.edit_text(f"🚀 **Process Started!**\nMode: {mode}\nIDs: {start_id} to {'Last' if end_id == 0 else end_id}\n\n🛑 Task rokne ke liye kisi bhi waqt `/cancel` bhejein.")
-        asyncio.create_task(run_szx_process(message, mode, sender_type, source_chat, dest_chat, start_id, end_id, topic_id, replace_word, new_word))
-    except Exception as e:
-        is_running = False
-        await m.edit_text(f"❌ Error: {e}")
-
-async def run_szx_process(message, mode, sender_type, source_chat, dest_chat, start_id, end_id, topic_id, replace_word, new_word):
-    global cancel_flag, is_running
-    processed_count = 0
-    current_index = 0
-    
-    try:
+        cancel_flag = False
         if end_id == 0:
-            async for last_m in user_app.get_chat_history(source_chat, limit=1):
-                end_id = last_m.id
-
-        total_messages = (end_id - start_id) + 1
+            async for last_m in user_app.get_chat_history(source_chat, limit=1): end_id = last_m.id
+        
+        await message.reply_text(f"🚀 **Task Started!** ID: {start_id} to {end_id}")
         send_client = bot_app if sender_type == "BOT" else user_app
-        print(f"\n🚀 Next -> Next Process Shuru... (Total Targets: {total_messages})\n")
         
         for current_id in range(start_id, end_id + 1):
             if cancel_flag:
-                print("\n🛑 Task Cancelled by User!")
-                await message.reply_text(f"🛑 **Task Cancel Kar Diya Gaya Hai!**\nTotal Processed: {processed_count} messages.")
+                await message.reply_text("🛑 **Task Cancelled!**")
                 break
                 
-            current_index += 1
-            left_messages = total_messages - current_index
-            
             try:
-                print(f"🔍 Reading Msg ID: {current_id} [{current_index}/{total_messages}]...", end="\r")
                 msg = await user_app.get_messages(source_chat, current_id)
-                
-                if msg is None or msg.empty or msg.service:
-                    print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} khali ya deleted hai. Baki: {left_messages} | Next ->")
-                    continue
-                    
-                msg_topic_id = msg.reply_to_top_message_id or msg.reply_to_message_id
-                if topic_id != 0 and msg_topic_id != topic_id:
-                    print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} is topic ka nahi hai. Next ->")
-                    continue
+                if msg is None or msg.empty or msg.service: continue
                 
                 original_text = msg.text.html if msg.text else (msg.caption.html if msg.caption else "")
-                new_text = original_text
-                
-                if original_text:
-                    new_text = original_text.replace("Anish", "SZX").replace("𝗔𝗯𝗵𝗶𝘀𝗵𝗲𝗸 𝗦𝗮𝗻𝗷𝗶𝘁 🚩🇮🇳", "SZX").replace("Abhishek Sanjit", "SZX")
-                    
-                    if replace_word != "0":
-                        replacement = "" if new_word == "0" else new_word
-                        new_text = new_text.replace(replace_word, replacement)
-
-                    new_text = re.sub(r'<a href="[^"]+">([^<]+)</a>', r'\1', new_text)
-                    new_text = re.sub(r'\s*\(?https?://(?:chat\.)?whatsapp\.com/[^\s<]+\)?\s*', ' ', new_text)
-                    new_text = re.sub(r'https?://\S+|www\.\S+', '', new_text).strip()
-                
-                branding_text = "\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
-                final_caption = f"{new_text}{branding_text}" if new_text else branding_text
+                new_text = re.sub(r'https?://\S+|www\.\S+', '', original_text).strip()
+                final_caption = f"{new_text}\n\n━━━━━━━━━━━━━━•\n▸ 𝙀𝙭𝙩𝙧𝙖𝙘𝙩𝙚𝙙 𝘽𝙮 - 𝗦𝗭𝗫 🚩"
 
                 if mode == "FORWARD":
-                    if new_text:
-                        if msg.media:
-                            await msg.copy(dest_chat, caption=final_caption)
-                        else:
-                            await user_app.send_message(dest_chat, new_text)
-                    else:
-                        await msg.copy(dest_chat)
-                    
-                    await asyncio.sleep(2)
-                    print(f"[{current_index}/{total_messages}] ✅ Msg {current_id} Forwarded! Baki: {left_messages} | Next ->")
-                    processed_count += 1
-                    
+                    if msg.media: await msg.copy(dest_chat, caption=final_caption)
+                    else: await user_app.send_message(dest_chat, final_caption)
                 elif mode == "REUPLOAD" and msg.media:
-                    thumb_path = None
-                    media_obj = msg.video or msg.document or msg.audio
-                    if media_obj and getattr(media_obj, "thumbs", None):
-                        try: thumb_path = await user_app.download_media(media_obj.thumbs[0].file_id)
-                        except: pass
-
+                    status_msg = await message.reply_text(f"⚙️ **Processing ID:** {current_id}")
                     start_time = time.time()
-                    file_path = await user_app.download_media(msg, progress=progress_bar, progress_args=(msg.id, "DL", start_time))
+                    file_path = await user_app.download_media(msg, progress=progress_bar, progress_args=("📥 **Downloading...**", status_msg, start_time))
                     
-                    print(f"\n📤 Uploading Msg {current_id}...", end="\r")
-                    if msg.video:
-                        await send_client.send_video(dest_chat, file_path, caption=final_caption, thumb=thumb_path)
-                    elif msg.document:
-                        await send_client.send_document(dest_chat, file_path, caption=final_caption, thumb=thumb_path)
-                    elif msg.audio:
-                        await send_client.send_audio(dest_chat, file_path, caption=final_caption)
-                    elif msg.photo:
-                        await send_client.send_photo(dest_chat, file_path, caption=final_caption)
-                        
-                    if file_path and os.path.exists(file_path): os.remove(file_path)
-                    if thumb_path and os.path.exists(thumb_path): os.remove(thumb_path)
-                        
-                    await asyncio.sleep(2)
-                    print(f"[{current_index}/{total_messages}] ✅ Msg {current_id} Uploaded! Baki: {left_messages} | Next ->")
-                    processed_count += 1
+                    start_time = time.time()
+                    if msg.video: await send_client.send_video(dest_chat, file_path, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
+                    elif msg.document: await send_client.send_document(dest_chat, file_path, caption=final_caption, progress=progress_bar, progress_args=("📤 **Uploading...**", status_msg, start_time))
+                    
+                    await status_msg.delete()
+                    if os.path.exists(file_path): os.remove(file_path)
 
+                await asyncio.sleep(2)
             except FloodWait as e:
-                print(f"\n⚠️ Telegram speed limit! Wait kar raha hoon {e.value}s...")
-                await asyncio.sleep(e.value + 5)
+                await message.reply_text(f"⏳ **FloodWait:** Waiting {e.value} seconds...")
+                await asyncio.sleep(e.value + 2)
             except Exception as e:
-                print(f"[{current_index}/{total_messages}] ⏭️ Msg {current_id} par error aaya ({e}). Next ->")
-
-        if bot_app.is_connected and not cancel_flag:
-            if processed_count == 0:
-                await message.reply_text("⚠️ **Task Khatam! Par ek bhi message gaya nahi.**\n*Iska matlab wahan koi valid messages the hi nahi.*")
-            else:
-                await message.reply_text(f"🎉 **Task Complete!** Total {processed_count} messages bhej diye gaye.")
-            
+                await message.reply_text(f"⚠️ **Skip ID {current_id}:** `{e}`")
+                
     except Exception as e:
-        print(f"❌ Process error: {e}")
-        if bot_app.is_connected and not cancel_flag:
-            await message.reply_text("❌ Process me koi error aayi. Logs check karein.")
+        await message.reply_text(f"❌ **Task Failed:** `{e}`")
     finally:
         is_running = False
         cancel_flag = False
@@ -245,7 +313,8 @@ async def run_szx_process(message, mode, sender_type, source_chat, dest_chat, st
 async def main():
     await user_app.start()
     await bot_app.start()
-    print("\n🤖 SZX Master Bot Online! Go to Telegram and send /task")
+    print("🤖 SZX Master Bot is Live & Active!")
+    await bot_app.send_message(ADMIN_ID, "✅ **SZX System Online!** Server successfully deployed.")
     await idle()
     await user_app.stop()
     await bot_app.stop()
@@ -255,4 +324,4 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except Exception as e:
         print(f"System Exit: {e}")
-    
+        
